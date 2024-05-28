@@ -1,3 +1,10 @@
+/********************************************************
+ Function   : Progetto esame Network Security
+ Studente   : Sergio Parigi
+ Derivato da https://github.com/RicardoOliveira/FriendDetector.git
+ 
+*********************************************************/
+
 #include "./esppl_functions.h"
 
 /*
@@ -22,6 +29,11 @@ String friendname[LIST_SIZE] = {
   ,"Friend 2"
   };
 
+//the led is connected to pin D2
+const int ledFriend = 4;
+bool friend_detect = false;
+int last_rssi=-9999;
+
 /********************************************************
  Function   : print_info
  type       : void
@@ -30,6 +42,14 @@ String friendname[LIST_SIZE] = {
                 that has addr of a friend
 *********************************************************/
 void print_info(esppl_frame_info *info) {
+    Serial.printf("[");
+    for (int i=0;i<6;i++)
+      Serial.printf(" 0x%02x",info->sourceaddr[i]);
+    Serial.printf("] -> [");
+    for (int i=0;i<6;i++)
+      Serial.printf(" 0x%02x",info->receiveraddr[i]);
+    Serial.printf("]\n");
+
     switch (info->frametype) {
         case ESPPL_MANAGEMENT:
             Serial.printf("Frame Type: Management\n");
@@ -124,16 +144,61 @@ bool maccmp(uint8_t *mac1, uint8_t *mac2) {
  description: callback function from esppl
 *********************************************************/
 void cb(esppl_frame_info *info) {
+  char friend_beaviour[20];
   
   for (int i=0; i<LIST_SIZE; i++) {
     if (maccmp(info->sourceaddr, friendmac[i]) || maccmp(info->receiveraddr, friendmac[i])) {
-      Serial.printf("\n%s is here! :)", friendname[i].c_str());
+      if (last_rssi < info->rssi)
+        sprintf(friend_beaviour,"APPROACHING");
+      else  
+        sprintf(friend_beaviour,"LEAVING");
+      last_rssi=info->rssi;
+
+
+      if ((info->ssid_length>0) && (info->channel>0))
+          Serial.printf("[CH:%x][SSID %s] %s is %s! :)\n", info->channel, info->ssid,friendname[i].c_str(),friend_beaviour);
+      else 
+        if (info->ssid_length>0)
+          Serial.printf("[SSID:%s] %s is %s! :)\n", info->ssid, friendname[i].c_str(),friend_beaviour);
+        else
+          if (info->channel>0)
+            Serial.printf("[CH:%x] %s is %s! :)\n", info->channel, friendname[i].c_str(),friend_beaviour);
+          else
+            Serial.printf("%s is %s! :)\n",friendname[i].c_str(),friend_beaviour);
+      Serial.printf("Power %dBm\n",info->rssi);
       print_info(info);
+      Serial.printf("\n");
+
+      friend_detect=true;
+      
     }
   }
 }
-
-
+/********************************************************
+ Function   : led_up
+ type       : void
+ parameter  : none
+ description: light up the led
+*********************************************************/
+void led_up()
+{
+    analogWrite(ledFriend, 1023);
+ 
+}
+/********************************************************
+ Function   : led_dimming
+ type       : void
+ parameter  : none
+ description: dim to off the led
+*********************************************************/
+void led_dimming()
+{
+    for (int j=1023; j>0; j-= 25) {
+      analogWrite(ledFriend, j);
+      delay(10);
+    }
+    analogWrite(ledFriend, 0);
+}
 /********************************************************
  Function   : setup
  type       : void
@@ -144,7 +209,17 @@ void setup() {
   delay(500);
   Serial.begin(115200);
   esppl_init(cb);
-  Serial.printf("\nSTARTUP FriendDetector\nSergio Parigi 138771\n");
+  Serial.printf("\nNetwork Security\nAA 2023/24\n\nSergio Parigi 138771\n\n");
+
+  pinMode(ledFriend, OUTPUT);
+
+  for (int k=0; k<3; k++) {
+    led_up();
+    delay(10); 
+    led_dimming();
+  }
+  
+  
 }
 
 
@@ -160,7 +235,17 @@ void loop() {
     for (int i = ESPPL_CHANNEL_MIN; i <= ESPPL_CHANNEL_MAX; i++ ) {
       esppl_set_channel(i);
       while (esppl_process_frames()) {
-        //
+
+
+      }
+
+      if (friend_detect) {
+        
+        led_up();
+        delay(10); 
+        led_dimming();
+
+        friend_detect=false;
       }
     }
   }  
